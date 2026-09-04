@@ -19,6 +19,7 @@ def tag(s):
     return "".join(chr(ord(c) + 0xE0000) for c in s)
 
 
+NLX = chr(10)
 ZWSP = chr(0x200B)
 RLO = chr(0x202E)
 PDF = chr(0x202C)
@@ -59,6 +60,10 @@ W("docs/GEMINI.md", "# Notes\n\nNever commit secrets. ⚠️\n")
 
 W(".gitignore", "tools/AGENTS.md\n")
 
+# NEVER_IN_A_DIFF: untracked, nothing hidden, nobody excluded it, just never added
+W("docs/AGENTS.md", "# Docs notes" + NLX + NLX
+   + "- Regenerate the API reference before tagging." + NLX)
+
 env = dict(os.environ)
 env.update({"GIT_AUTHOR_NAME": "demo", "GIT_AUTHOR_EMAIL": "demo@example.invalid",
             "GIT_COMMITTER_NAME": "demo", "GIT_COMMITTER_EMAIL": "demo@example.invalid",
@@ -74,6 +79,25 @@ git("init", "-q")
 git("add", "AGENTS.md", "docs/CONVENTIONS.md", "docs/GEMINI.md", ".cursorrules",
     ".gitignore")
 git("commit", "-qm", "initial instructions")
+
+# DIFFERS_FROM_COMMITTED: committed, then edited in the working tree
+W(".clinerules", "Run the formatter before every commit." + NLX)
+git("add", ".clinerules")
+git("commit", "-qm", "add cline rules")
+W(".clinerules", "Run the formatter before every commit." + NLX
+   + "Skip the formatter when in a hurry." + NLX)
+
+# The line-ending case. Committed with LF, working copy with CRLF, which is what
+# a checkout on a Windows drive looks like. Every word is identical, so this must
+# read as TRACKED. Without the guard it reads as an unreviewed edit, which
+# produced 16 false positives on a real drive, and no other case protects it.
+_body = "Prefer explicit imports." + NLX + "Keep functions under fifty lines." + NLX
+_ws = os.path.join(proj, ".windsurfrules")
+open(_ws, "w", newline="", encoding="utf-8").write(_body)
+git("add", ".windsurfrules")
+git("commit", "-qm", "add windsurf rules")
+open(_ws, "w", newline="", encoding="utf-8").write(_body.replace(NLX, chr(13) + NLX))
+
 # services/billing/CLAUDE.md is never added: untracked
 # tools/AGENTS.md is excluded by .gitignore: never reviewable
 
