@@ -76,6 +76,36 @@ every "9 insertions, 9 deletions" was a carriage return at end of line. Not one 
 word. A difference that survives only as an end-of-line byte is not a changed instruction,
 so those are excluded and the count went to zero.
 
+## It scans the whole tree, and says so when it does not
+
+There is no depth limit by default. On a 28,482 directory Windows drive mounted under WSL
+the walk takes about 140 seconds, which killed the step at its original 120 second timeout
+and reported nothing at all. The timeout was raised rather than the tree cut short, because
+a limit is a blind spot and a scan that quietly stops descending is the exact failure this
+play exists to name.
+
+`max_depth` is there for anyone who wants the trade, and taking it is always reported:
+
+```
+# Standing orders under /mnt/d: 25 instruction file(s), 1 to look at
+...
+## Scan was depth limited
+The walk stopped at depth 2 and did not descend into 3010 director(ies). An instruction
+file below that depth was not read, so this is a shorter report rather than a cleaner
+tree. Re-run with max_depth=0 for a complete scan.
+```
+
+The complete scan of that same drive finds 28 files and 3 exclusions. The shortened one
+finds 25 and 1. Both numbers are true; only one of them is an answer, and the report says
+which.
+
+Paths it cannot open are named too, rather than dropped:
+
+```
+## Not read (1 path(s))
+- /mnt/d/System Volume Information (PermissionError)
+```
+
 ## What it does not do
 
 It does not detect homoglyph substitution, and it does not read HTML or CSS, so the

@@ -23,7 +23,17 @@ NAMES = {
     "copilot-instructions.md",
 }
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".tox",
-             ".mypy_cache", ".pytest_cache", "dist", "build", ".next", "target"}
+             ".mypy_cache", ".pytest_cache", "dist", "build", ".next", "target",
+             "vendor", "Pods", "site-packages", ".gradle", ".m2", ".cargo", ".npm",
+             ".pnpm-store", ".terraform", ".turbo", ".parcel-cache", "coverage"}
+
+# There is no depth limit by default. Measured on a 28,482 directory drive the walk took
+# 155 seconds, which killed the step at its old 120 second timeout; the timeout was
+# raised rather than the tree cut short, because a limit is a blind spot and a scan that
+# quietly stops descending is the failure this play exists to report. max_depth is
+# available for anyone who wants the trade, and the report always states what was
+# skipped when they take it.
+NO_DEPTH_LIMIT = 0
 
 # Trend Micro, Invisible Prompt Injection: the Unicode tag block. Text is hidden by
 # adding 0xE0000 to each ASCII code point, so a reader sees nothing and a tokenizer sees
@@ -135,8 +145,9 @@ def global_candidates():
             os.path.join(home, ".config", "aider", "CONVENTIONS.md")]
 
 
-def discover(root, include_global):
+def discover(root, include_global, max_depth=NO_DEPTH_LIMIT):
     found, unreadable = [], []
+    not_descended = 0
 
     def note(e):
         unreadable.append({"path": str(getattr(e, "filename", "?")),
@@ -144,6 +155,11 @@ def discover(root, include_global):
 
     for dirpath, dirnames, files in os.walk(root, onerror=note):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        rel = os.path.relpath(dirpath, root)
+        depth = 0 if rel == "." else rel.count(os.sep) + 1
+        if max_depth and depth >= max_depth:
+            not_descended += len(dirnames)
+            dirnames[:] = []
         for fn in sorted(files):
             if fn not in NAMES:
                 continue
@@ -166,7 +182,8 @@ def discover(root, include_global):
             if os.path.isfile(g):
                 found.append({"path": g, "display": g, "scope": "global",
                               "bytes": os.path.getsize(g), "git": review_status(g)})
-    return {"root": root, "files": found, "unreadable": unreadable}
+    return {"root": root, "files": found, "unreadable": unreadable,
+            "max_depth": max_depth, "not_descended": not_descended}
 
 
 def inspect(payload):
@@ -243,7 +260,10 @@ def main():
     if mode == "discover":
         flag = sys.argv[3].strip().lower() if len(sys.argv) > 3 else ""
         include_global = raw != "demo" and flag in ("1", "true", "yes")
-        data = discover(root, include_global)
+        depth = NO_DEPTH_LIMIT
+        if len(sys.argv) > 4 and sys.argv[4].strip().isdigit():
+            depth = max(0, min(64, int(sys.argv[4].strip())))
+        data = discover(root, include_global, depth)
         # rote unpacks a play into a fresh temp directory, so the resolved demo path is
         # a run-specific string nobody can act on. Report what was asked for.
         data["root"] = "demo (bundled corpus)" if raw == "demo" else root
@@ -262,6 +282,8 @@ def main():
         "files_found": len(payload.get("files", [])),
         "counts": counts,
         "unreadable": unreadable,
+        "max_depth": payload.get("max_depth"),
+        "not_descended": payload.get("not_descended", 0),
         "orders": rows,
     }, separators=(",", ":")))
 
