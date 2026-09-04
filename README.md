@@ -106,6 +106,22 @@ Paths it cannot open are named too, rather than dropped:
 - /mnt/d/System Volume Information (PermissionError)
 ```
 
+## The payload is budgeted, not hoped
+
+A step's stdout is cut at 65536 bytes with no error, so a report that grows with the tree
+eventually lies. Measured on a real drive this emitted 294 bytes per instruction file,
+which put the ceiling around 223 files, and a file carrying a full decode pushed that to
+about 93. That headroom was a property of your machine rather than of this code.
+
+Now only files with something to report travel as records; a clean file is a count. The
+same 28-file tree went from 8,253 bytes to 1,088, and `files_found` stays exact so running
+out of room can never read as "there was less to find". The listing is capped at 200 rows
+and says so when it caps.
+
+The absolute path is gone from every record too. It equals the root plus the relative path,
+and the root is in the payload once, so repeating it made the ceiling depend on how deep
+you pointed the play.
+
 ## What it does not do
 
 It does not detect homoglyph substitution, and it does not read HTML or CSS, so the

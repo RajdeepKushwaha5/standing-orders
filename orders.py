@@ -171,7 +171,6 @@ def discover(root, include_global, max_depth=NO_DEPTH_LIMIT):
                 unreadable.append({"path": rel, "reason": type(e).__name__})
                 continue
             found.append({
-                "path": full,
                 "display": rel,
                 "scope": "root" if os.path.dirname(rel) in ("", ".") else "nested",
                 "bytes": size,
@@ -180,8 +179,9 @@ def discover(root, include_global, max_depth=NO_DEPTH_LIMIT):
     if include_global:
         for g in global_candidates():
             if os.path.isfile(g):
-                found.append({"path": g, "display": g, "scope": "global",
-                              "bytes": os.path.getsize(g), "git": review_status(g)})
+                found.append({"display": g, "scope": "global",
+                              "bytes": os.path.getsize(g),
+                              "git": review_status(g)})
     return {"root": root, "files": found, "unreadable": unreadable,
             "max_depth": max_depth, "not_descended": not_descended}
 
@@ -189,9 +189,13 @@ def discover(root, include_global, max_depth=NO_DEPTH_LIMIT):
 def inspect(payload):
     rows = []
     unreadable = list(payload.get("unreadable", []))
+    base = payload.get("root_path") or payload.get("root") or ""
     for f in payload.get("files", []):
+        # the absolute path is derivable, so it is rebuilt here rather than
+        # carried on every record across the step boundary
+        full = f["display"] if os.path.isabs(f["display"]) else os.path.join(base, f["display"])
         try:
-            text = open(f["path"], encoding="utf-8").read()
+            text = open(full, encoding="utf-8").read()
         except (OSError, UnicodeDecodeError) as e:
             unreadable.append({"path": f["display"], "reason": type(e).__name__})
             continue
@@ -267,6 +271,7 @@ def main():
         # rote unpacks a play into a fresh temp directory, so the resolved demo path is
         # a run-specific string nobody can act on. Report what was asked for.
         data["root"] = "demo (bundled corpus)" if raw == "demo" else root
+        data["root_path"] = root
         print(json.dumps(data, separators=(",", ":")))
         return
 
@@ -277,14 +282,24 @@ def main():
     counts = {}
     for r in rows:
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
+
+    # Only files with something to report travel as records. A clean file is a
+    # count, and the total stays exact, so a budget can never turn "ran out of
+    # room" into "there was less to find". The cap on reported rows is stated
+    # in the report rather than applied in silence.
+    CAP = 200
+    flagged = [r for r in rows if r["verdict"] != "READ_AND_CLEAN"]
+    omitted = max(0, len(flagged) - CAP)
+    flagged = flagged[:CAP]
     print(json.dumps({
         "root": payload.get("root"),
         "files_found": len(payload.get("files", [])),
         "counts": counts,
         "unreadable": unreadable,
+        "rows_omitted": omitted,
         "max_depth": payload.get("max_depth"),
         "not_descended": payload.get("not_descended", 0),
-        "orders": rows,
+        "orders": flagged,
     }, separators=(",", ":")))
 
 
