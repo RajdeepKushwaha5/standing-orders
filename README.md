@@ -17,7 +17,7 @@ the instruction files under your home directory that apply to every project.
 Zero credentials. Reads files only: it never executes anything and never writes.
 `python3` and `git`, nothing else.
 
-## Three questions, seven verdicts
+## Three questions, eight verdicts
 
 **Which files actually apply.** Nested instruction files below the repository root are
 loaded too, and that is the part people forget. Global ones under your home directory
@@ -31,6 +31,7 @@ apply to every project and no repository diff can show them.
 | `NEVER_IN_A_DIFF` | Untracked. Nothing has ever shown this content to a reviewer. |
 | `DIFFERS_FROM_COMMITTED` | The file no longer matches what was committed, so the reviewed version is not the version in force. |
 | `NO_REPOSITORY_TO_REVIEW_AGAINST` | Not inside a git repository. Not a claim that anything is wrong. |
+| `REVIEW_STATE_UNKNOWN` | git could not be run at all, so the review state was never established. **This is the play failing to look, not a finding about your file.** |
 
 **What is in them that a reader cannot see.**
 

@@ -45,12 +45,33 @@ SOFT_HYPHEN = 0x00AD
 VARIATION = ((0xFE00, 0xFE0F), (0xE0100, 0xE01EF))
 
 
-def run(args):
+# Three outcomes, and folding them together is what made a broken git read as a clean
+# report: git answered, git answered no, git never answered at all.
+GIT_OK, GIT_NO, GIT_DOWN = "ok", "no", "down"
+
+
+def run_status(args):
+    """stdout and which of the three outcomes produced it.
+
+    Only git saying "not a git repository" is an answer about repositories. A missing
+    binary, a timeout or an unexpected exit code is this play failing to look, and
+    reporting that as "not in a repository" tells you nothing is wrong when nothing was
+    checked."""
     try:
         p = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=20)
     except Exception:
-        return None
-    return p.stdout if p.returncode == 0 else None
+        return None, GIT_DOWN
+    if p.returncode == 0:
+        return p.stdout, GIT_OK
+    if "not a git repository" in (p.stderr or "").lower():
+        return None, GIT_NO
+    return None, GIT_DOWN
+
+
+def run(args):
+    """stdout when the command succeeded. Callers that must tell a real answer from a
+    failure to look use run_status instead."""
+    return run_status(args)[0]
 
 
 def code(args):
@@ -99,12 +120,20 @@ def review_status(path):
     """Has a human ever seen this content in a diff? Tracked and unmodified means the
     committed bytes were reviewable. Untracked means nothing ever showed them."""
     d = os.path.dirname(path) or "."
-    top = run(["-C", d, "rev-parse", "--show-toplevel"])
+    top, how = run_status(["-C", d, "rev-parse", "--show-toplevel"])
+    if how == GIT_DOWN:
+        # Not an answer. Saying NOT_IN_GIT_REPO here would report "not a claim that
+        # anything is wrong" about a check that never ran.
+        return {"state": "GIT_UNAVAILABLE", "repo": None}
     if top is None:
         return {"state": "NOT_IN_GIT_REPO", "repo": None}
     top = top.strip()
     rel = os.path.relpath(path, top)
-    if code(["-C", top, "ls-files", "--error-unmatch", "--", rel]) != 0:
+    tracked = code(["-C", top, "ls-files", "--error-unmatch", "--", rel])
+    if tracked is None:
+        # git worked a moment ago and does not now; that is not evidence of anything
+        return {"state": "GIT_UNAVAILABLE", "repo": top}
+    if tracked != 0:
         # Not tracked is two different facts. A file nobody added yet is an oversight.
         # A file an ignore rule excludes will never be reviewed by design, and a
         # teammate who clones the repository will not have it at all, so their agent is
@@ -233,6 +262,8 @@ def inspect(payload):
             row["verdict"] = "DIFFERS_FROM_COMMITTED"
         elif state == "NOT_IN_GIT_REPO":
             row["verdict"] = "NO_REPOSITORY_TO_REVIEW_AGAINST"
+        elif state == "GIT_UNAVAILABLE":
+            row["verdict"] = "REVIEW_STATE_UNKNOWN"
         else:
             row["verdict"] = "READ_AND_CLEAN"
         rows.append(row)
@@ -240,7 +271,7 @@ def inspect(payload):
 
 
 ORDER = ["HIDDEN_TEXT_DECODES", "INVISIBLE_CHARACTERS", "EXCLUDED_FROM_REVIEW",
-         "NEVER_IN_A_DIFF", "DIFFERS_FROM_COMMITTED",
+         "NEVER_IN_A_DIFF", "DIFFERS_FROM_COMMITTED", "REVIEW_STATE_UNKNOWN",
          "NO_REPOSITORY_TO_REVIEW_AGAINST", "READ_AND_CLEAN"]
 
 
