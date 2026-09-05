@@ -58,7 +58,7 @@ def run_status(args):
     reporting that as "not in a repository" tells you nothing is wrong when nothing was
     checked."""
     try:
-        p = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=20)
+        p = subprocess.run(["git", "-c", "core.quotePath=false"] + args, capture_output=True, text=True, timeout=20)
     except Exception:
         return None, GIT_DOWN
     if p.returncode == 0:
@@ -76,7 +76,7 @@ def run(args):
 
 def code(args):
     try:
-        return subprocess.run(["git"] + args, capture_output=True, text=True,
+        return subprocess.run(["git", "-c", "core.quotePath=false"] + args, capture_output=True, text=True,
                               timeout=20).returncode
     except Exception:
         return None
